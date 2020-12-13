@@ -1,3 +1,6 @@
+from enum import Enum
+from itertools import product
+
 臺灣閩南語羅馬字拼音聲母表 = {
     'p', 'ph', 'm', 'b',
     't', 'th', 'n', 'l',
@@ -41,3 +44,23 @@
     'oi', 'oih',  # 詞彙方言差.csv:硩⿰落去
 }
 臺灣閩南語羅馬字拼音韻母表 = 臺灣閩南語羅馬字拼音通行韻母表 | 臺灣閩南語羅馬字拼音次方言韻母表
+
+iNULL = "iNULL"
+TONES = list(map(str, range(1, 9)))
+entering_tones = ['4', '8']
+entering_tone_suffixes = "hptk"
+
+is_phn = lambda final, tone: tone == "" or ((final[-1] in entering_tone_suffixes) == (tone in entering_tones))
+
+is_final = lambda final: ((final[0][-1] in entering_tone_suffixes) == (final[-1] in entering_tones))
+
+join_pair = lambda pair: "".join(pair)
+
+all_syls = set(map(join_pair, product(臺灣閩南語羅馬字拼音聲母表, map(join_pair, filter(is_final, product(臺灣閩南語羅馬字拼音韻母表, TONES))))))
+
+class Stratum(Enum):
+    無 = 0
+    文 = 1
+    白 = 2
+    俗 = 3
+    替 = 4
