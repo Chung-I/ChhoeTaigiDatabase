@@ -1,7 +1,6 @@
 from typing import NamedTuple, List, Union
 import re
 import json
-import math
 from collections.abc import Iterable
 from itertools import product
 from functools import partial, reduce
@@ -17,6 +16,7 @@ from tsm.util import get_all_possible_translations
 from tsm.sentence import Sentence
 from tsm.clients import MosesConfig, MosesClient, AllennlpClient, UnkTranslator
 from tsm.lexicon import Lexicon, LexiconEntry
+from tsm.ckip_wrapper import CKIPWordSegWrapper
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -66,8 +66,6 @@ if __name__ == '__main__':
     parser.add_argument('--model-types', nargs='+', default=['seq2seq', 'char'])
     parser.add_argument('--unk-consult-order', nargs='+', default=['prob', 'dict', 'bpmf', 'seq2seq'])
     parser.add_argument('--form', choices=['char', 'word', 'sent'])
-    parser.add_argument('--pron-only', action='store_true')
-    parser.add_argument('--has-utt-id', action='store_true')
     args = parser.parse_args()
     model_types = args.model_types
 
@@ -77,36 +75,39 @@ if __name__ == '__main__':
     moses_config = MosesConfig(True, True, args.n_best)
     moses_client = MosesClient(port=args.mosesserver_port, config=moses_config)
     word_seg = None
+    if "word" in model_types:
+        word_seg = CKIPWordSegWrapper(args.word_seg_model_path)
     if "dict" in model_types:
         from tsm.ckip_wrapper import CKIPWordSegWrapper
         cutter = CKIPWordSegWrapper(args.ckip_path, dict_lexicon, not args.recommend_dictionary)
 
     seq2seq_translator = None
-    if 'seq2seq' in model_types or 'seq2seq' in args.unk_consult_order:
-        seq2seq_translator = AllennlpClient()
+    seq2seq_translator = AllennlpClient()
     unk_translator = UnkTranslator(prob_lexicon, dict_lexicon, taibun_lexicon, args.unk_consult_order, seq2seq_translator)
     maybe_process_unk = maybe_process_unk_factory(unk_translator)
 
     lines = read_file_to_lines(args.src_path)
+    src_sents = [Sentence.parse_mixed_text(line, remove_punct=True) for line in lines]
     outf = open(args.dest_path, 'w')
 
     oovs = []
-    for line in tqdm.tqdm(lines):
-        utt_id = None
-        if args.has_utt_id:
-            fields = line.split()
-            utt_id = fields[0]
-            line = " ".join(fields[1:])
-        src_sent = Sentence.parse_mixed_text(line, remove_punct=True)
-        all_entries = []
+    for src_sent in tqdm.tqdm(src_sents):
+        if not src_sent:
+            continue
         if "dict" in model_types:
+            from tsm.ckip_wrapper import CKIPWordSegWrapper
             maybe_sents = cutter.cut("".join(src_sent))
-            n_best = math.ceil(min(args.n_best, math.exp(math.log(1000)/len(maybe_sents))))
-            if n_best != args.n_best:
-                logger.info(f"sequence length {len(maybe_sents)} too long; reduce n best to {n_best}")
-            lattice = [unk_translator.translate(word, n_best) for word in maybe_sents]
-            hyp_entries = sorted(map(lambda path: reduce(add, path), product(*lattice)), key=lambda e: -e.prob)[:args.n_best]
-            all_entries += hyp_entries
+            try:
+                tgt_hyps = get_all_possible_translations(maybe_sents, prob_lexicon)
+            except KeyError:
+                tgt_hyps = None
+            if not tgt_hyps:
+                #fall back to char-based SMT if src_sent can't be segmented using lexicon
+                model_types.append("char")
+
+        all_entries = []
+        if "seq2seq" in model_types:
+            all_entries += seq2seq_translator.translate(src_sent)
 
         if "char" in model_types or "word" in model_types:
             if "word" in model_types:
@@ -121,28 +122,21 @@ if __name__ == '__main__':
             except xmlrpc.client.Fault:
                 pass
 
-        if "seq2seq" in model_types:
-            all_entries += seq2seq_translator.translate(src_sent)
-
         merged_entries = Lexicon.merge_duplicated_prons(all_entries)
         nbest_entries = sorted(merged_entries, key=lambda e: -e.prob)[:args.n_best]
         filtered_entries = list(filter(lambda e: e.prob >= np.log(args.min_prob) and e.grapheme.strip() and e.phonemes.strip(), nbest_entries))
         src_text = "".join(src_sent)
-        if args.pron_only:
-            hyp_texts = list(map(lambda entry: entry.phonemes, filtered_entries))
-        else:
-            hyp_texts = list(map(str, filtered_entries))
+        hyp_texts = list(map(str, filtered_entries))
         if not hyp_texts:
             oovs.append("".join(src_sent))
             logger.warning(f"{src_sent} doesn't have any valid tranlations; skipping")
 
         for hyp_text in hyp_texts:
-            if utt_id is not None:
-                hyp_text = f"{utt_id} {hyp_text}"
             outf.write(hyp_text + "\n")
         time.sleep(0.005)
     outf.close()
 
     if args.oov_path:
         write_lines_to_file(args.oov_path, oovs)
+            
 

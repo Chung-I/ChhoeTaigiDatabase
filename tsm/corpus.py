@@ -1,6 +1,6 @@
 from typing import List
-from local.sentence import ParallelSentence
-from local.ckip_wrapper import CKIPWordSegWrapper
+from tsm.sentence import ParallelSentence
+from tsm.ckip_wrapper import CKIPWordSegWrapper
 
 class ParallelCorpus(list):
     def __init__(self, parallel_sents: List[ParallelSentence], ws_root_dir=None):

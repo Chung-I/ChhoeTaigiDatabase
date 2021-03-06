@@ -8,9 +8,9 @@ import logging
 
 import xmlrpc.client
 
-from local.util import char2bpmf
-from local.lexicon import Lexicon, LexiconEntry
-from local.symbols import Stratum
+from tsm.util import char2bpmf
+from tsm.lexicon import Lexicon, LexiconEntry
+from tsm.symbols import Stratum
 
 logger = logging.getLogger(__name__)
 
@@ -128,6 +128,7 @@ class UnkTranslator:
 
     def translate(self, word, n_best=1):
         translator_name = None
+        hyps = []
         for name, consultant in self.consultants:
             try:
                 translator_name = name
@@ -135,5 +136,4 @@ class UnkTranslator:
                 break
             except KeyError:
                 continue
-        logger.info(f"Unknown word {word} translated by {translator_name} as {list(map(str, hyps))}")
         return hyps

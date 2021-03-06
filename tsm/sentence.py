@@ -1,18 +1,12 @@
 from typing import Dict, List, Any
 import json
 import unicodedata
-import re
+import regex as re
 import zhon.hanzi
 import cn2an
 import opencc
 
 converter = opencc.OpenCC('s2tw.json')
-
-class TaibunSentence:
-    @staticmethod
-    def from_line(line: str, remove_punct: bool = True,
-                  form: str = 'char'):
-        assert form in ['char', 'word', 'sent']
 
 
 class Sentence:
@@ -30,6 +24,7 @@ class Sentence:
 
         if normalize:
             line = Sentence.normalize(line)
+
         if form in ['char', 'word']:
             words = line.split()
         elif form == 'sent':
@@ -38,7 +33,8 @@ class Sentence:
             raise NotImplementedError
 
         if remove_punct:
-            words = list(filter(lambda word: re.search(f"[^{zhon.hanzi.characters}]", word) is None, words))
+            words = list(filter(lambda w: w, [re.sub("[^\P{P}-]+", "", word.strip()).strip() for word in words]))
+
         return words
 
     @staticmethod
@@ -51,10 +47,30 @@ class Sentence:
     @staticmethod
     def cut(sent):
         if "ckip" not in Sentenceword_segmenter_cache:
-            from local.ckip_wrapper import CKIPWordSegWrapper
+            from tsm.ckip_wrapper import CKIPWordSegWrapper
             Sentence.word_segmenter_cache["ckip"] = CKIPWordSegWrapper('/home/nlpmaster/ssd-1t/weights/data')
         sent = re.sub("\s+", "", sent)
         return Sentence.word_segmenter_cache["ckip"].cut(sent)
+
+    @staticmethod
+    def parse_mixed_text(mixed_text, remove_punct=False):
+        if remove_punct:
+            return [match.group() for match in re.finditer(f"[{zhon.hanzi.characters}]|[^{zhon.hanzi.characters}\W](\-|[^{zhon.hanzi.characters}\W])+|[^{zhon.hanzi.characters}\W]+", mixed_text)]
+        else:
+            return [match.group() for match in re.finditer(f"[{zhon.hanzi.characters}]|[^{zhon.hanzi.characters}\W](\-|[^{zhon.hanzi.characters}\W])+|\p{{P}}", mixed_text)]
+
+
+#class TaibunSentence(Sentence):
+#    @staticmethod
+#    def from_line(line: str, remove_punct: bool = True,
+#                  form: str = 'char'):
+#        assert form in ['char', 'word', 'sent']
+#        if form in ['char', 'word']:
+#            words = line.split()
+#        elif form == 'sent':
+#            words = list(line)
+#        else:
+#            raise NotImplementedError
 
 class ParallelSentence(list):
     """
@@ -84,24 +100,24 @@ class ParallelSentence(list):
         return cls(sent_of_langs, metadata)
 
     @staticmethod
-    def from_json_to_tuple(json_file: str, mandarin_key: str, taigi_key: str,
-                           cut_mandarin: bool = False,
-                           normalize_mandarin: bool = False,
-                           preprocess_taigi: bool = True):
+    def from_json_to_tuple(json_file: str, mandarin_key: str, taigi_key: str):
+                           #cut_mandarin: bool = False,
+                           #normalize_mandarin: bool = False,
+                           #preprocess_taigi: bool = True):
 
         with open(json_file) as fp:
             raw_sent = json.load(fp)
         mandarin = raw_sent[mandarin_key]
         taigi = raw_sent[taigi_key]
-        if cut_mandarin:
-            mandarin_words = Sentence.cut(mandarin)
-            mandarin = " ".join(mandarin_words)
-        if normalize_mandarin:
-            mandarin_words = Sentence.from_line(mandarin, form='word')
-            mandarin = " ".join(mandarin_words)
-        if preprocess_taigi:
-            taigi_words = ParallelSentence.parse_taigi(taigi)
-            taigi = " ".join(taigi_words)
+        #if cut_mandarin:
+        #    mandarin_words = Sentence.cut(mandarin)
+        #    mandarin = " ".join(mandarin_words)
+        #if normalize_mandarin:
+        #    mandarin_words = Sentence.from_line(mandarin, form='word')
+        #    mandarin = " ".join(mandarin_words)
+        #if preprocess_taigi:
+        #    taigi_words = ParallelSentence.parse_taigi(taigi)
+        #    taigi = " ".join(taigi_words)
 
         return (mandarin, taigi)
 

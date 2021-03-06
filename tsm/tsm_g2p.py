@@ -4,7 +4,7 @@ from 臺灣言語工具.翻譯.摩西工具.語句編碼器 import 語句編碼�
 from 臺灣言語工具.語音合成 import 台灣話口語講法
 import docker
 import time
-from local.dummy_segmenter import DummySegmenter
+from tsm.dummy_segmenter import DummySegmenter
 
 def init():
     '''
@@ -21,7 +21,7 @@ def init():
 def translate(text, seg=False):
     #華語句物件 = 拆文分析器.建立句物件(text)
     if seg:
-        from local.ckip_segmenter import CKIPSegmenter
+        from tsm.ckip_segmenter import CKIPSegmenter
         華語斷詞句物件 = CKIPSegmenter.斷詞(text)
     else:
         華語斷詞句物件 = DummySegmenter.斷詞(text)

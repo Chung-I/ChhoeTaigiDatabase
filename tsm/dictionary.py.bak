@@ -3,41 +3,17 @@ import pandas as pd
 from collections import defaultdict
 import re
 import numpy as np
-from POJ_TL import poj_tl
+from local.POJ_TL import poj_tl
+import logging
+from local.util import flatten, raw_pron_to_all_prons, raw_graph_to_all_graphs
+from itertools import product
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
-def recursively_retrieve_string_in_parenthesis(string):
-    substrings = []
-    try:
-        span = re.search(r'\((.*?)\)', string).span()
-        substrings.append(string[span[0]+1:span[1]-1])
-        substrings_left = recursively_retrieve_string_in_parenthesis(string[:span[0]] + string[span[1]:])
-        substrings += substrings_left
-    except AttributeError:
-        substrings.append(string.strip())
-
-    return substrings
-
 class Dictionary:
 
-    @staticmethod
-    def from_file(dictionary_path, grapheme_key, phoneme_key):
-        df = pd.read_csv(dictionary_path, dtype={grapheme_key: str, phoneme_key: str})
-        df = df.replace(np.nan, "", regex=True)
-        grapheme_phoneme_pairs = list(zip(df[grapheme_key], df[phoneme_key]))
-        dictionary = defaultdict(set)
-        for raw_graph, raw_pron in grapheme_phoneme_pairs: # prons = pronunciations
-            raw_graph = re.sub("\(.*\)", "", raw_graph).strip() # get rid of comments in grapheme
-            raw_pron = raw_pron.strip()
-            if not raw_pron or not raw_graph:
-                continue
-            graphs = [graph.strip() for graph in re.split("、", raw_graph)]
-            prons = re.split(r'\/', raw_pron) # some word has multiple pronunciations separated by '/'
-            prons = flatten([recursively_retrieve_string_in_parenthesis(pron.strip()) for pron in prons])
-            for graph in graphs:
-                dictionary[graph].update(prons)
-        return dictionary
+
+
 
     @staticmethod
     def merge_dictionaries(dictionaries):
@@ -52,15 +28,30 @@ class Dictionary:
                          with_tone=False):
         def syl2phns(syl_tone):
             # parse syllable to syllable and tone
+            syl_tone = syl_tone.lower()
             try:
-                tone = int(syl_tone[-1])
-                syl = syl_tone[:-1]
-            except ValueError:
-                syl = syl_tone
-                tone = 0
+                match = re.match("([a-z]+)(\d)", syl_tone)
+                syl = match.group(1)
+                tone = match.group(2)
+            except AttributeError:
+                if re.match("[a-z]+", syl_tone):
+                    syl = syl_tone
+                    if syl_tone[-1] in "hptk":
+                        tone = 4
+                    else:
+                        tone = 1
+                else:
+                    raise ValueError
+
 
             syl.encode("ascii")
-            phns = syllable_phoneme_mapping[syl.lower()]
+            if syllable_phoneme_mapping:
+                phns = syllable_phoneme_mapping[syl.lower()][0]
+                if with_tone:
+                    final = phns[-1] + str(tone)
+                    phns = phns[:-1] + [final]
+            else:
+                phns = [f"{syl}{tone}"]
             #except KeyError:
             #    try:
             #        syl.encode('ascii')
@@ -69,9 +60,6 @@ class Dictionary:
             #        tlt_syl = syl
             #        phns = syl2phns(poj_tl(tlt_syl).tlt_tls())
 
-            if with_tone:
-                final = phns[-1] + str(tone)
-                phns = phns[:-1] + [final]
             return phns
             
         fp = open(lexicon_path, 'w')
@@ -80,10 +68,16 @@ class Dictionary:
                 syls = filter(lambda syl: syl, re.split('[\W\-]+', pron.strip()))
                 try:
                     phns = flatten(map(syl2phns, syls))
+                    graph = re.sub("\s+", "", graph)
                     fp.write(f"{graph} {' '.join(phns)}\n")
                 except KeyError as e:
                     print(f"skipping pronunciation {pron} of {graph} since phone not in syl-phn-mapping: {e}")
                 except UnicodeEncodeError:
+                    print(graph, pron)
+                    continue
+                except IndexError:
+                    continue
+                except ValueError:
                     continue
         fp.close()
 
@@ -91,13 +85,25 @@ class Dictionary:
     def parse_lexicon(lexicon_path):
         with open(lexicon_path) as fp:
             entries = fp.read().splitlines()
-        graph_phns_mapping = {}
+        graph_phns_mapping = defaultdict(list)
         for entry in entries:
             graph_phns = re.split("\W", entry)
             graph, phns = graph_phns[0], graph_phns[1:]
-            graph_phns_mapping[graph] = phns
+            graph_phns_mapping[graph].append(phns)
         return graph_phns_mapping
-        
+
+    @staticmethod
+    def extract_parallel_sentences(dict_path, field, pattern):
+        df = pd.read_csv(dict_path)
+        def maybe_search(pattern, entry):
+            try:
+                result = re.findall(pattern, entry)
+                return result
+            except TypeError:
+                logging.warning(f"{entry} contains invalid strings; skipping")
+                return []
+        return [maybe_search(pattern, entry) for entry in df[field]]
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

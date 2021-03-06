@@ -46,7 +46,7 @@ from itertools import product
 臺灣閩南語羅馬字拼音韻母表 = 臺灣閩南語羅馬字拼音通行韻母表 | 臺灣閩南語羅馬字拼音次方言韻母表
 
 iNULL = "iNULL"
-TONES = list(map(str, range(1, 9)))
+TONES = list(map(str, range(1, 10)))
 entering_tones = ['4', '8']
 entering_tone_suffixes = "hptk"
 
@@ -56,6 +56,7 @@ is_final = lambda final: ((final[0][-1] in entering_tone_suffixes) == (final[-1]
 
 join_pair = lambda pair: "".join(pair)
 
+all_toneless_syls = set(map(join_pair, product(臺灣閩南語羅馬字拼音聲母表, 臺灣閩南語羅馬字拼音韻母表)))
 all_syls = set(map(join_pair, product(臺灣閩南語羅馬字拼音聲母表, map(join_pair, filter(is_final, product(臺灣閩南語羅馬字拼音韻母表, TONES))))))
 
 class Stratum(Enum):
@@ -64,3 +65,24 @@ class Stratum(Enum):
     白 = 2
     俗 = 3
     替 = 4
+
+from 臺灣言語工具.音標系統.閩南語.臺灣閩南語羅馬字拼音轉音值模組 \
+    import 臺灣閩南語羅馬字拼音對照音值聲母表, 臺灣閩南語羅馬字拼音對照音值韻母表 
+
+音值對照臺灣閩南語羅馬字拼音聲母表 = {
+    value: key for key, value in 臺灣閩南語羅馬字拼音對照音值聲母表.items()
+}
+
+音值對照臺灣閩南語羅馬字拼音韻母表 = {
+    value: key for key, value in 臺灣閩南語羅馬字拼音對照音值韻母表.items()
+}
+
+音值對照臺灣閩南語羅馬字拼音表 = {**音值對照臺灣閩南語羅馬字拼音聲母表,
+                                  **音值對照臺灣閩南語羅馬字拼音韻母表}
+音值對照臺灣閩南語羅馬字拼音表['ə'] = 'o'
+音值對照臺灣閩南語羅馬字拼音表['əʔ'] = 'oh'
+音值對照臺灣閩南語羅馬字拼音表['iə'] = 'io'
+音值對照臺灣閩南語羅馬字拼音表['iəʔ'] = 'ioh'
+for i in range(1, 10):
+    音值對照臺灣閩南語羅馬字拼音表[str(i)] = str(i)
+音值對照臺灣閩南語羅馬字拼音表['10'] = '4'
